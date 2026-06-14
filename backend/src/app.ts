@@ -160,7 +160,27 @@ async function shutdown(signal: string) {
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
+// ──────────────────────────────────────────
+// Keep-Alive Ping (Render Free Tier)
+// ──────────────────────────────────────────
+function startKeepAlive() {
+  const pingInterval = 14 * 60 * 1000; // 14 minutes
+  const url = process.env.RENDER_EXTERNAL_URL || `http://localhost:${config.port}`;
+  
+  setInterval(() => {
+    http.get(`${url}/health`, (res) => {
+      logger.info(`Keep-alive ping sent to ${url}/health - Status: ${res.statusCode}`);
+    }).on('error', (err) => {
+      logger.error(`Keep-alive ping failed: ${err.message}`);
+    });
+  }, pingInterval);
+}
+
 // Start the server
-startServer();
+startServer().then(() => {
+  if (process.env.NODE_ENV === 'production') {
+    startKeepAlive();
+  }
+});
 
 export { app, server, io };

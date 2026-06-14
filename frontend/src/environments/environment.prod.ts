@@ -1,5 +1,5 @@
 export const environment = {
   production: true,
-  apiUrl: '/api',
-  wsUrl: '',
+  apiUrl: 'https://userbot-s.onrender.com/api',
+  wsUrl: 'https://userbot-s.onrender.com',
 };
