@@ -31,7 +31,7 @@ Backend ishlashi uchun `.env` faylida quyidagi ma'lumotlar to'ldirilishi kerak:
 ### 1.5 LLM va Boshqa Sozlamalar
 * **NODE_ENV**: Renderda avtomatik ravishda `production` bo'ladi.
 * **CORS_ORIGIN**: Vercel da olingan Frontend manzilingiz (masalan, `https://userbot-frontend.vercel.app`).
-* **GROQ_API_KEY**: [Groq Console](https://console.groq.com/) saytiga kirib, API kalit yarating va shuni yozing.
+* **GROQ_API_KEY**: __ [Groq Console](https://console.groq.com/) saytiga kirib, API kalit yarating va shuni yozing.
 
 ---
 
