@@ -15,7 +15,6 @@ temp/
 .env
 
 # Prisma
-prisma/migrations/
 
 # IDE
 .idea/
