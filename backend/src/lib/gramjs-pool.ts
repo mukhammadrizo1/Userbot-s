@@ -1,4 +1,5 @@
 import { TelegramClient, Api } from 'telegram';
+import { ConnectionTCPObfuscated } from 'telegram/network/connection';
 import { StringSession } from 'telegram/sessions';
 import { NewMessage, NewMessageEvent } from 'telegram/events';
 import { PrismaClient, AccountStatus } from '@prisma/client';
@@ -124,6 +125,8 @@ export class GramJSPool {
         connectionRetries: 5,
         retryDelay: 1000,
         autoReconnect: true,
+        useWSS: true,
+        connection: ConnectionTCPObfuscated,
       }
     );
 
@@ -174,6 +177,8 @@ export class GramJSPool {
       config.telegramApiHash,
       {
         connectionRetries: 5,
+        useWSS: true,
+        connection: ConnectionTCPObfuscated,
       }
     );
 

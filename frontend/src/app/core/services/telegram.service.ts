@@ -86,7 +86,12 @@ export class TelegramService {
   }
 
   get user() {
-    return this.webApp?.initDataUnsafe?.user;
+    // Return hardcoded user for local testing when not in Telegram Web App
+    return this.webApp?.initDataUnsafe?.user || { 
+      id: 8536522745, 
+      first_name: 'Local', 
+      last_name: 'Tester' 
+    };
   }
 
   get colorScheme(): 'light' | 'dark' {
