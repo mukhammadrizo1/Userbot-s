@@ -1,0 +1,424 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────
+// 1. ACCOUNT (Userbot Accounts)
+// ──────────────────────────────────────────
+model Account {
+  id              String        @id @default(uuid())
+  phone           String        @unique
+  telegramId      BigInt?       @unique
+  firstName       String?
+  lastName        String?
+  username        String?
+  sessionString   String        @db.Text
+  isActive        Boolean       @default(true)
+  status          AccountStatus @default(DISCONNECTED)
+  lastConnectedAt DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  broadcastJobs BroadcastJob[]
+  messageLogs   MessageLog[]
+
+  @@map("accounts")
+}
+
+enum AccountStatus {
+  CONNECTED
+  DISCONNECTED
+  AUTH_REQUIRED
+  FLOOD_WAIT
+  BANNED
+}
+
+// ──────────────────────────────────────────
+// 2. USER (Scraped/Added Telegram Users)
+// ──────────────────────────────────────────
+model User {
+  id             String   @id @default(uuid())
+  telegramId     BigInt   @unique
+  username       String?
+  firstName      String?
+  lastName       String?
+  phone          String?
+  bio            String?  @db.Text
+  profilePhotoId String?
+  isBot          Boolean  @default(false)
+  isPremium      Boolean  @default(false)
+  lastSeen       DateTime?
+  accessHash     String?  @db.Text
+  notes          String?  @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  groups      UserGroup[]
+  categories  CategoriesOnUsers[]
+  messageLogs MessageLog[]
+
+  // Phase 2 Relations
+  history            UserHistory[]
+  groupObservations  UserGroupObservation[]
+  scrapedMessages    ScrapedMessage[]
+  capturedLeads      CapturedLead[]
+
+  @@map("users")
+}
+
+// ──────────────────────────────────────────
+// 3. GROUP (Monitored Telegram Groups/Channels)
+// ──────────────────────────────────────────
+model Group {
+  id          String    @id @default(uuid())
+  telegramId  BigInt    @unique
+  title       String
+  username    String?
+  type        GroupType @default(GROUP)
+  memberCount Int?
+  description String?   @db.Text
+  photoId     String?
+  accessHash  String?   @db.Text
+  isMonitored Boolean   @default(false)
+  notes       String?   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members     UserGroup[]
+  categories  CategoriesOnGroups[]
+  messageLogs MessageLog[]
+
+  // Phase 2 Relations
+  userObservations   UserGroupObservation[]
+  scrapedMessages    ScrapedMessage[]
+  spyTicketTargets   SpyTicketTarget[]
+  capturedLeads      CapturedLead[]
+
+  @@map("groups")
+}
+
+enum GroupType {
+  GROUP
+  SUPERGROUP
+  CHANNEL
+}
+
+// ──────────────────────────────────────────
+// 4. USER-GROUP (Many-to-Many Junction)
+// ──────────────────────────────────────────
+model UserGroup {
+  userId   String
+  groupId  String
+  role     String?  @default("member")
+  joinedAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([userId, groupId])
+  @@map("user_groups")
+}
+
+// ──────────────────────────────────────────
+// 5. CATEGORY (Custom Tags/Categories)
+// ──────────────────────────────────────────
+model Category {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  color     String?  @default("#6366f1")
+  createdAt DateTime @default(now())
+
+  users  CategoriesOnUsers[]
+  groups CategoriesOnGroups[]
+
+  // Phase 2 Relations
+  spyTicketTargets SpyTicketTarget[]
+
+  @@map("categories")
+}
+
+model CategoriesOnUsers {
+  userId     String
+  categoryId String
+  assignedAt DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([userId, categoryId])
+  @@map("categories_on_users")
+}
+
+model CategoriesOnGroups {
+  groupId    String
+  categoryId String
+  assignedAt DateTime @default(now())
+
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, categoryId])
+  @@map("categories_on_groups")
+}
+
+// ──────────────────────────────────────────
+// 6. MEDIA ASSET (Zero-Budget Storage)
+// ──────────────────────────────────────────
+model MediaAsset {
+  id              String    @id @default(uuid())
+  fileId          String
+  fileUniqueId    String    @unique
+  fileType        MediaType
+  fileName        String?
+  mimeType        String?
+  fileSize        Int?
+  caption         String?   @db.Text
+  channelMsgId    Int?
+  thumbnailFileId String?
+
+  createdAt DateTime @default(now())
+
+  broadcastJobs BroadcastJob[]
+  messageLogs   MessageLog[]
+
+  @@map("media_assets")
+}
+
+enum MediaType {
+  PHOTO
+  VIDEO
+  DOCUMENT
+  AUDIO
+  VOICE
+  ANIMATION
+  STICKER
+}
+
+// ──────────────────────────────────────────
+// 7. BROADCAST JOB (Smart Broadcasting)
+// ──────────────────────────────────────────
+model BroadcastJob {
+  id          String          @id @default(uuid())
+  name        String?
+  status      BroadcastStatus @default(PENDING)
+
+  // Message content
+  messageText  String?  @db.Text
+  parseMode    String?  @default("HTML")
+  mediaAssetId String?
+  mediaAsset   MediaAsset? @relation(fields: [mediaAssetId], references: [id])
+
+  // Sender configuration
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id])
+
+  // Targeting
+  targetType   TargetType
+  targetIds    Json
+  totalTargets Int @default(0)
+
+  // Scheduling & Rate Limiting
+  deadlineAt DateTime?
+  delayMs    Int @default(5000)
+  jitterMs   Int @default(1000)
+
+  // Progress tracking
+  sentCount    Int @default(0)
+  failedCount  Int @default(0)
+  skippedCount Int @default(0)
+
+  // Timestamps
+  startedAt   DateTime?
+  completedAt DateTime?
+  pausedAt    DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Error summary
+  lastError String? @db.Text
+
+  messageLogs MessageLog[]
+
+  @@map("broadcast_jobs")
+}
+
+enum BroadcastStatus {
+  PENDING
+  CALCULATING
+  QUEUED
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum TargetType {
+  USERS
+  GROUPS
+  MIXED
+}
+
+// ──────────────────────────────────────────
+// 8. MESSAGE LOG (Delivery Tracking)
+// ──────────────────────────────────────────
+model MessageLog {
+  id String @id @default(uuid())
+
+  broadcastJobId String?
+  broadcastJob   BroadcastJob? @relation(fields: [broadcastJobId], references: [id])
+
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id])
+
+  // Target (one of these will be set)
+  targetUserId  String?
+  targetUser    User?  @relation(fields: [targetUserId], references: [id])
+  targetGroupId String?
+  targetGroup   Group? @relation(fields: [targetGroupId], references: [id])
+
+  // Content
+  messageText  String? @db.Text
+  mediaAssetId String?
+  mediaAsset   MediaAsset? @relation(fields: [mediaAssetId], references: [id])
+
+  // Result
+  status        MessageStatus @default(PENDING)
+  telegramMsgId Int?
+  errorMessage  String?       @db.Text
+  errorCode     String?
+
+  sentAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([broadcastJobId, status])
+  @@index([accountId, sentAt])
+  @@map("message_logs")
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+// ──────────────────────────────────────────
+// PHASE 2: TELEMETRY & OSINT
+// ──────────────────────────────────────────
+model UserHistory {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  username       String?
+  firstName      String?
+  lastName       String?
+  profilePhotoId String?
+  
+  observedAt     DateTime @default(now())
+  @@map("user_history")
+}
+
+model UserGroupObservation {
+  id         String   @id @default(uuid())
+  userId     String
+  groupId    String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group      Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  
+  observedAt DateTime @default(now())
+  @@map("user_group_observations")
+}
+
+// ──────────────────────────────────────────
+// PHASE 2: SCRAPED MESSAGES
+// ──────────────────────────────────────────
+model ScrapedMessage {
+  id            String   @id @default(uuid())
+  telegramMsgId Int
+  
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  groupId       String
+  group         Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  
+  messageText   String   @db.Text
+  sentAt        DateTime
+  createdAt     DateTime @default(now())
+  
+  capturedLeads CapturedLead[]
+  
+  @@unique([groupId, telegramMsgId])
+  @@map("scraped_messages")
+}
+
+// ──────────────────────────────────────────
+// PHASE 2: SPY MODULE & LLM
+// ──────────────────────────────────────────
+model SpyTicket {
+  id               String   @id @default(uuid())
+  name             String
+  keywords         String   @db.Text // Pipe-separated
+  aiPrompt         String   @db.Text
+  autoReplyMessage String?  @db.Text
+  status           SpyStatus @default(RUNNING) // RUNNING, PAUSED, CANCELLED
+  isDeleted        Boolean  @default(false)    // Soft delete
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  targets          SpyTicketTarget[]
+  capturedLeads    CapturedLead[]
+  
+  @@map("spy_tickets")
+}
+
+enum SpyStatus {
+  RUNNING
+  PAUSED
+  CANCELLED
+}
+
+model SpyTicketTarget {
+  id         String   @id @default(uuid())
+  ticketId   String
+  groupId    String?
+  categoryId String?
+  
+  ticket     SpyTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  group      Group?    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
+  @@map("spy_ticket_targets")
+}
+
+model CapturedLead {
+  id          String   @id @default(uuid())
+  ticketId    String
+  ticket      SpyTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  groupId     String
+  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  
+  messageId   String
+  message     ScrapedMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  
+  autoReplySent Boolean  @default(false)
+  isDeleted     Boolean  @default(false) // Soft delete
+  capturedAt    DateTime @default(now())
+  
+  @@unique([ticketId, userId]) // Idempotency constraint
+  @@map("captured_leads")
+}
